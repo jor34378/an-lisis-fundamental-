@@ -12,14 +12,8 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilo CSS personalizado para limpiar la interfaz
-st.markdown("""
-    <style>
-    .block-container {padding-top: 1.5rem; padding-bottom: 1.5rem;}
-    h1, h2, h3 {margin-bottom: 1rem;}
-    [data-testid="stMetricValue"] {font-size: 24px;}
-    </style>
-""", unsafe_html=True)
+# Estilo CSS inyectado de forma segura para optimizar los márgenes de la interfaz
+st.html("<style>.block-container {padding-top: 1.5rem; padding-bottom: 1.5rem;} h1, h2, h3 {margin-bottom: 1rem;} [data-testid='stMetricValue'] {font-size: 24px;}</style>")
 
 # ==============================================================================
 # FUNCIONES DE PROCESAMIENTO CON CACHÉ (Optimización de velocidad)
@@ -67,7 +61,7 @@ def fetch_and_process_data(ticker_symbol, d_bajo, d_medio, d_alto):
             spy_prices = data_raw['Close'][benchmark]
         else:
             prices = data_raw[['Close']].copy()
-            spy_prices = data_raw['Close'] if 'Close' in data_raw else None # Fallback básico si falla multiindex
+            spy_prices = data_raw['Close'] if 'Close' in data_raw else None
 
         # 3. Integración e Interpolación
         df_union = df_eps.set_index("Fecha de Reporte")
@@ -82,8 +76,6 @@ def fetch_and_process_data(ticker_symbol, d_bajo, d_medio, d_alto):
             loss = (-delta.where(delta < 0, 0))
             avg_gain = gain.rolling(window=periods).mean()
             avg_loss = loss.rolling(window=periods).mean()
-            # Optimización para evitar bucle explícito lento en Streamlit si es posible, 
-            # pero mantenemos tu algoritmo exacto para fidelidad matemática:
             for i in range(periods, len(series)):
                 avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (periods - 1) + gain.iloc[i]) / periods
                 avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (periods - 1) + loss.iloc[i]) / periods
@@ -99,7 +91,7 @@ def fetch_and_process_data(ticker_symbol, d_bajo, d_medio, d_alto):
         df['RS'] = df['Close'] / spy_prices
         df['RS_SMA'] = df['RS'].rolling(window=50).mean()
         
-        # Info adicional de info/financials para el checklist
+        # Guardar estructuras fundamentales
         info = ticker_obj.info
         fin = ticker_obj.financials.T
         cf = ticker_obj.cashflow.T
@@ -122,7 +114,7 @@ def fetch_and_process_data(ticker_symbol, d_bajo, d_medio, d_alto):
 st.sidebar.header("⚙️ Configuración del Activo")
 ticker_input = st.sidebar.text_input("Ticker de la Empresa:", value="MSFT").upper().strip()
 
-st.sidebar.subheader("Multiplos P/E manuales")
+st.sidebar.subheader("Múltiplos P/E manuales")
 input_bajo = st.sidebar.number_input("Desvío BAJO:", value=21.0, step=1.0)
 input_medio = st.sidebar.number_input("Desvío MEDIO:", value=30.0, step=1.0)
 input_alto = st.sidebar.number_input("Desvío ALTO:", value=40.0, step=1.0)
@@ -143,13 +135,12 @@ if ticker_input:
         st.error(f"❌ Error al procesar el activo: {error}")
     elif df is not None:
         
-        # --- CÁLCULO DE MÉTRICAS CLAVE PARA KIPs ---
+        # --- CÁLCULO DE MÉTRICAS CLAVE ---
         current_price = df['Close'].iloc[-1]
         current_pe = current_price / df['eps_ttm'].iloc[-1]
         current_rsi = df['RSI'].iloc[-1]
         current_disp = df['Disp_200'].iloc[-1]
         rs_status = "LIDERANDO" if df['RS'].iloc[-1] > df['RS_SMA'].iloc[-1] else "REZAGADO"
-        rs_color = "green" if rs_status == "LIDERANDO" else "red"
         
         # --- 1. SECCIÓN DE MÉTRICAS EN PANTALLA ---
         m1, m2, m3, m4 = st.columns(4)
@@ -158,11 +149,11 @@ if ticker_input:
         m3.metric("RSI (14)", f"{current_rsi:.2f}")
         m4.metric("Disp. EMA200", f"{current_disp:.2f}%")
         
-        # --- tabs para organizar Gráficos, Checklist y Cheat Sheet ---
+        # Organizar secciones en pestañas limpias
         tab_graphs, tab_checklist, tab_cheatsheet = st.tabs(["📈 Gráficos Técnicos", "📋 Checklist Financiero", "📑 Manual de Estrategia"])
         
         # ----------------------------------------------------------------------
-        # TAB 1: GRÁFICOS (Matplotlib adaptado a Streamlit)
+        # TAB 1: GRÁFICOS
         # ----------------------------------------------------------------------
         with tab_graphs:
             st.subheader("Análisis de Confluencia Profesional")
@@ -170,7 +161,6 @@ if ticker_input:
             fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 14), sharex=True,
                                                      gridspec_kw={'height_ratios': [2.5, 1, 1, 1]})
             
-            # Forzar fondo transparente/adaptable si se desea, o mantener clásico profesional
             fig.patch.set_facecolor('#ffffff')
             
             # Panel 1: Canales de Valoración
@@ -210,11 +200,10 @@ if ticker_input:
             plt.tight_layout()
             st.pyplot(fig)
             
-            # Status final resumido debajo del gráfico
             st.info(f"**Status de Fuerza Relativa:** Actualmente el activo se encuentra **{rs_status}** respecto al índice de referencia SPY.")
 
         # ----------------------------------------------------------------------
-        # TAB 2: CHECKLIST FINANCIERO (Cálculos de Calidad)
+        # TAB 2: CHECKLIST FINANCIERO
         # ----------------------------------------------------------------------
         with tab_checklist:
             st.subheader("Análisis de Fundamentales (AF)")
@@ -223,7 +212,6 @@ if ticker_input:
                 info = fund_data["info"]
                 fin = fund_data["fin"]
                 cf = fund_data["cf"]
-                d_avg_neg = fund_data["d_avg_neg"]
 
                 price = info.get('currentPrice', 1)
                 target = info.get('targetMeanPrice', price)
@@ -243,7 +231,6 @@ if ticker_input:
                 roe = info.get('returnOnEquity', 0) * 100
                 peg = info.get('pegRatio', 0)
 
-                # Construcción de estructura limpia para dataframes nativos
                 checklist_data = [
                     {"Métrica": "Crecimiento Ingresos (YoY)", "Valor": f"{((rev_now/rev_prev)-1)*100:+.2f}%", "Estado": "✅" if rev_now > rev_prev else "❌", "Nota": "Vital para escala"},
                     {"Métrica": "Crecimiento Benef. Neto (YoY)", "Valor": f"{((net_inc_now/net_inc_prev)-1)*100:+.2f}%", "Estado": "✅" if net_inc_now > net_inc_prev else "❌", "Nota": "Eficiencia final"},
@@ -257,11 +244,9 @@ if ticker_input:
                 ]
 
                 df_check = pd.DataFrame(checklist_data)
-                
-                # Renderizado de tabla interactiva y limpia en Streamlit
                 st.dataframe(df_check, use_container_width=True, hide_index=True)
 
-                # Lógica del Score Ponderado
+                # Cálculo de puntuación
                 score = 0
                 if rev_now > rev_prev: score += 15
                 if net_inc_now > net_inc_prev: score += 15
@@ -284,7 +269,6 @@ if ticker_input:
                     veredicto = "🚨 EVITAR: Fundamentos débiles o riesgo alto."
                     color_box = "error"
 
-                # Mostrar Resultados Destacados
                 col_sc, col_ver = st.columns([1, 3])
                 with col_sc:
                     st.metric("SCORE PONDERADO", f"{score} / 100")
@@ -295,16 +279,13 @@ if ticker_input:
                     else: st.error(veredicto)
                     
             except Exception as ex:
-                st.error(f"Faltan datos financieros públicos clave en Yahoo Finance para calcular el checklist completo. Detalle: {ex}")
+                st.error(f"Faltan datos financieros públicos en Yahoo Finance para calcular el checklist completo. Detalle: {ex}")
 
         # ----------------------------------------------------------------------
-        # TAB 3: CHEAT SHEET (Manual Integrado)
+        # TAB 3: CHEAT SHEET
         # ----------------------------------------------------------------------
         with tab_cheatsheet:
-            st.markdown("""
-            ## Protocolo de Decisión 80/20
-            Este manual define los rangos críticos para interpretar la confluencia entre **Valor (AF)** y **Momento (AT)**.
-            """)
+            st.markdown("## Protocolo de Decisión 80/20")
             
             c1, c2 = st.columns(2)
             with c1:
@@ -316,31 +297,31 @@ if ticker_input:
                 *   **Sobre el Canal Gris:** Sobrevaloración → **Venta / Toma de Ganancias**.
                 
                 ### 2. Fuerza Relativa (RS vs SPY)
-                *   **RS > Media (Nube Verde):** El activo es un **Líder**. Supera al mercado. Es donde queremos estar.
-                *   **RS < Media (Nube Roja/Vacia):** El activo es un **Rezagado**. Aunque suba de precio, el SPY rinde más.
-                *   **Divergencia RS:** Si el precio sube pero la RS baja, el rally es débil. **Cuidado.**
+                *   **RS > Media (Nube Verde):** El activo es un **Líder**. Supera al mercado.
+                *   **RS < Media (Nube Vacía):** El activo es un **Rezagado**. El SPY rinde más.
+                *   **Divergencia RS:** Si el precio sube pero la RS baja, el rally es débil.
                 """)
             with c2:
                 st.markdown("""
                 ### 3. Estructura: Dispersión EMA 200
                 *   **Extremo Negativo:** Pánico. Probabilidad de rebote inminente.
-                *   **Promedio Negativo:** Zona de soporte institucional. Buen punto de entrada en empresas sanas.
+                *   **Promedio Negativo:** Soporte institucional. Buen punto de entrada.
                 *   **Cerca de 0%:** Precio en equilibrio. Tendencia sana.
-                *   **Extremo Positivo:** Euforia. Peligro de corrección fuerte (*Pullback*).
+                *   **Extremo Positivo:** Euforia. Peligro de corrección (*Pullback*).
                 
                 ### 4. Momentum: RSI Semanal (Wilder)
-                *   **RSI < 30:** Sobreventa. Buscar **Divergencias Alcistas** (mínimos crecientes en RSI).
+                *   **RSI < 30:** Sobreventa. Buscar **Divergencias Alcistas**.
                 *   **RSI 40 - 60:** Zona neutral. La tendencia previa manda.
-                *   **RSI > 70:** Sobrecompra. No significa venta inmediata, pero sí que el movimiento está maduro.
+                *   **RSI > 70:** Sobrecompra. Movimiento maduro.
                 """)
                 
             st.markdown("""
             ---
             ### 💡 El "Gatito" Perfecto (Confluencia de Alta Probabilidad)
-            Se da cuando el análisis técnico y fundamental se alinean de manera exacta:
+            Se da cuando:
             1. El precio toca la **Zona Baja del Canal P/E**.
             2. La **Dispersión EMA 200** está en su promedio negativo.
-            3. El **RSI Semanal** muestra una divergencia alcista o sobreventa fuerte.
+            3. El **RSI Semanal** muestra una divergencia alcista o sobreventa.
             4. El **Score Fundamental (AF)** es superior a **80 puntos**.
             """)
 else:
